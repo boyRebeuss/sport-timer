@@ -1,0 +1,14 @@
+{
+  "name": "Sport Timer",
+  "short_name": "Timer",
+  "description": "Timer d'entraînement : Tabata, HIIT, EMOM, AMRAP, For Time, Circuit",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

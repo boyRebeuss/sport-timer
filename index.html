@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sport Timer">
+  <title>Sport Timer</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Accueil -->
+  <section id="home" class="screen">
+    <header class="brand">
+      <h1>Sport Timer</h1>
+      <p class="muted">Choisissez votre entraînement</p>
+    </header>
+
+    <div id="modes" class="modes"></div>
+
+    <h3>Favoris</h3>
+    <div id="favs" class="list"></div>
+
+    <h3>Historique <button class="link" data-action="clear-history">Effacer</button></h3>
+    <div id="history" class="list"></div>
+
+    <h3>Réglages</h3>
+    <div class="card settings">
+      <label class="toggle"><span>Bips sonores</span><input type="checkbox" data-setting="sound"><i></i></label>
+      <label class="toggle"><span>Annonces vocales</span><input type="checkbox" data-setting="voice"><i></i></label>
+      <label class="toggle"><span>Vibrations</span><input type="checkbox" data-setting="vibrate"><i></i></label>
+    </div>
+  </section>
+
+  <!-- Configuration -->
+  <section id="config" class="screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="home" aria-label="Retour">‹</button>
+      <h2 id="config-title"></h2>
+      <span class="icon-btn-spacer"></span>
+    </header>
+    <p id="config-desc" class="muted desc"></p>
+
+    <div id="fields" class="card"></div>
+
+    <div id="steps-wrap" hidden>
+      <h3>Enchaînement</h3>
+      <div id="steps" class="card"></div>
+      <div class="row">
+        <button class="ghost" data-action="add-work">+ Exercice</button>
+        <button class="ghost" data-action="add-rest">+ Repos</button>
+      </div>
+    </div>
+
+    <div class="save-row">
+      <input id="fav-name" type="text" placeholder="Nom du favori" maxlength="40">
+      <button class="ghost" data-action="save-fav">☆ Enregistrer</button>
+    </div>
+
+    <div class="sticky-start">
+      <div class="total">Durée totale <strong id="config-total"></strong></div>
+      <button class="primary big" id="start-btn" data-action="start">Démarrer</button>
+    </div>
+  </section>
+
+  <!-- Séance en cours -->
+  <section id="run" class="screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="stop" aria-label="Arrêter">✕</button>
+      <div id="run-title" class="run-title"></div>
+      <button class="icon-btn" id="mute-btn" data-action="mute" aria-label="Couper le son">🔊</button>
+    </header>
+
+    <div class="phase">
+      <div id="phase-label" class="phase-label"></div>
+      <div id="phase-info" class="phase-info"></div>
+    </div>
+
+    <div class="ring-wrap" data-action="toggle">
+      <svg viewBox="0 0 200 200" class="ring">
+        <circle class="ring-bg" cx="100" cy="100" r="90"/>
+        <circle class="ring-fg" id="ring" cx="100" cy="100" r="90"/>
+      </svg>
+      <div class="ring-center">
+        <div id="time" class="time">00:00</div>
+        <div id="paused-tag" class="paused-tag" hidden>PAUSE</div>
+      </div>
+    </div>
+
+    <div id="next" class="next"></div>
+
+    <div id="counter" class="counter" hidden>
+      <button class="round-btn" data-action="rep-minus" aria-label="Retirer un round">−</button>
+      <div class="reps"><span id="reps">0</span><small>rounds</small></div>
+      <button class="round-btn plus" data-action="rep-plus">+1</button>
+    </div>
+
+    <div id="laps-box" class="laps-box" hidden>
+      <div class="row">
+        <button class="pill" data-action="lap">Tour</button>
+        <button class="pill solid" data-action="finish">Terminé</button>
+      </div>
+      <ol id="laps" class="laps"></ol>
+    </div>
+
+    <div class="total-bar">
+      <div class="total-text"><span id="total-label">Restant</span><span id="total-time"></span></div>
+      <div class="bar"><div id="bar-fill"></div></div>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl" data-action="prev" aria-label="Précédent">
+        <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+      </button>
+      <button class="ctrl play" id="toggle-btn" data-action="toggle" aria-label="Pause">
+        <svg viewBox="0 0 24 24" class="ico-pause"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        <svg viewBox="0 0 24 24" class="ico-play"><path d="M7 4v16l13-8z"/></svg>
+      </button>
+      <button class="ctrl" data-action="next" aria-label="Suivant">
+        <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+      </button>
+    </div>
+
+    <div id="stop-sheet" class="sheet-backdrop" hidden>
+      <div class="sheet">
+        <h3>Séance en pause</h3>
+        <button class="primary big" data-action="resume">Reprendre</button>
+        <button class="ghost big" data-action="finish">Terminer la séance</button>
+        <button class="link danger" data-action="quit">Quitter sans enregistrer</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fin de séance -->
+  <section id="done" class="screen" hidden>
+    <div class="done-head">
+      <div class="done-emoji">🎉</div>
+      <h2>Bravo !</h2>
+      <p id="done-name" class="muted"></p>
+    </div>
+    <div id="stats" class="stats"></div>
+    <ol id="done-laps" class="laps card"></ol>
+    <button class="primary big" data-action="restart">Recommencer</button>
+    <button class="ghost big" data-action="home">Accueil</button>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
