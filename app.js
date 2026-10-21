@@ -20,16 +20,16 @@ const INTERVAL_FIELDS = ['prepare', 'work', 'rest', 'rounds', 'sets', 'setRest',
 
 const MODES = {
   tabata: {
-    name: 'Tabata', icon: '🔥', color: '#ef4444', desc: '20 s / 10 s × 8',
-    long: '8 rounds de 20 s d’effort maximal et 10 s de repos. 4 minutes, à fond.',
+    name: 'Tabata', icon: '🔥', color: '#ef4444', desc: '20 s / 10 s · 4 × 4',
+    long: '4 séries de 4 rounds : 20 s d’effort maximal, 10 s de repos, 1 min de récupération entre les séries.',
     fields: INTERVAL_FIELDS,
-    defaults: { prepare: 10, work: 20, rest: 10, rounds: 8, sets: 1, setRest: 60, cooldown: 0 },
+    defaults: { prepare: 10, work: 20, rest: 10, rounds: 4, sets: 4, setRest: 60, cooldown: 0 },
   },
   hiit: {
     name: 'HIIT', icon: '⚡', color: '#f97316', desc: 'Intervalles effort / repos',
     long: 'Alternez effort et repos, en rounds et en séries.',
     fields: INTERVAL_FIELDS,
-    defaults: { prepare: 10, work: 40, rest: 20, rounds: 10, sets: 1, setRest: 90, cooldown: 0 },
+    defaults: { prepare: 10, work: 20, rest: 10, rounds: 4, sets: 4, setRest: 90, cooldown: 0 },
   },
   emom: {
     name: 'EMOM', icon: '⏱️', color: '#eab308', desc: 'Every Minute On the Minute',
@@ -85,6 +85,9 @@ const PHASES = {
 };
 
 const RING_C = 2 * Math.PI * 90;
+
+// Derniers réglages de chaque mode. Clé changée (« last2_ ») quand les valeurs par défaut changent, pour qu'elles s'appliquent.
+const LAST_KEY = 'last2_';
 
 /* ================= Utilitaires ================= */
 
@@ -441,7 +444,7 @@ function renderHome() {
 
 function openConfig(mode, cfg, name = '') {
   const m = MODES[mode];
-  current = { mode, name, cfg: clone({ ...m.defaults, ...(cfg || store.get('last_' + mode, {})) }) };
+  current = { mode, name, cfg: clone({ ...m.defaults, ...(cfg || store.get(LAST_KEY + mode, {})) }) };
   document.documentElement.style.setProperty('--accent', m.color);
   $('#config-title').textContent = `${m.icon} ${m.name}`;
   $('#config-desc').textContent = m.long;
@@ -509,7 +512,7 @@ const segElapsed = (now = performance.now()) => (run.paused ? run.pauseElapsed :
 function startRun() {
   const segs = buildSegments(current.mode, current.cfg);
   if (!segs.length) return;
-  store.set('last_' + current.mode, current.cfg);
+  store.set(LAST_KEY + current.mode, current.cfg);
   initAudio();
 
   const before = [];
