@@ -135,6 +135,9 @@ h3 {
 }
 .toggle:last-child { border-bottom: 0; }
 .toggle input { display: none; }
+.toggle span small { display: block; color: var(--muted); font-size: 12px; }
+.note { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 10px 4px 0; }
+.note.warn { color: #fbbf24; }
 .toggle i {
   width: 50px; height: 30px; border-radius: 15px;
   background: #3a4150; position: relative; transition: background .2s;

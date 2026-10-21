@@ -127,7 +127,7 @@ const store = {
 
 /* ================= État ================= */
 
-const settings = { sound: true, voice: true, vibrate: true, ...store.get('settings', {}) };
+const settings = { sound: true, voice: true, vibrate: true, notify: false, ...store.get('settings', {}) };
 let favorites = store.get('favorites', []);
 let sessions = store.get('sessions', []);
 let current = null; // { mode, cfg, name }
@@ -245,7 +245,8 @@ function beep(freq = 880, dur = 0.15, when = 0, vol = 0.6) {
 }
 
 function speak(text) {
-  if (!settings.voice || muted || !text || !('speechSynthesis' in window)) return;
+  // Voix impossible en arrière-plan : les phrases s'accumuleraient et sortiraient toutes au retour.
+  if (!settings.voice || muted || !text || document.hidden || !('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'fr-FR';
@@ -256,6 +257,118 @@ function speak(text) {
 
 function buzz(pattern) {
   if (settings.vibrate && navigator.vibrate) navigator.vibrate(pattern);
+}
+
+/* ================= Piste audio de la séance ================= */
+// Les téléphones suspendent le JavaScript quand on quitte l'appli ou verrouille l'écran : tous les bips
+// de la séance sont donc pré-enregistrés dans une piste audio (WAV) lue comme une musique, qui continue
+// en arrière-plan. Le timer se recale sur la piste au retour dans l'appli.
+
+const TRACK_RATE = 8000;  // 8 kHz, 8 bits mono : ~0,5 Mo par minute
+const TRACK_MAX = 7200;   // au-delà de 2 h, les bips repassent par le Web Audio (appli ouverte seulement)
+const trackEl = new Audio();
+trackEl.preload = 'auto';
+
+function tone(data, at, freq, dur, vol = 0.85) {
+  const start = Math.round(at * TRACK_RATE), n = Math.round(dur * TRACK_RATE);
+  for (let i = 0; i < n && start + i < data.length; i++) {
+    const t = i / TRACK_RATE;
+    const env = Math.min(1, t / 0.01) * Math.pow(0.001, t / dur);
+    const v = data[start + i] - 128 + 127 * vol * env * Math.sin(2 * Math.PI * freq * t);
+    data[start + i] = clamp(Math.round(v + 128), 0, 255);
+  }
+}
+
+function buildTrack(segs, before, total) {
+  const length = Math.min(isFinite(total) ? total : before.at(-1), TRACK_MAX);
+  const samples = Math.ceil((length + 2) * TRACK_RATE);
+  const buf = new Uint8Array(44 + samples);
+  const data = buf.subarray(44);
+  data.fill(128);
+
+  segs.forEach((s, i) => {
+    const T = before[i];
+    if (s.kind === 'work') tone(data, T, 1175, 0.5); else tone(data, T, 660, 0.5);
+    if (isFinite(s.dur)) for (let k = 1; k <= 3 && k < s.dur; k++) tone(data, T + s.dur - k, 880, 0.12);
+  });
+  if (isFinite(total) && total <= TRACK_MAX) {
+    tone(data, total, 1046, 0.18); tone(data, total + 0.2, 1318, 0.18); tone(data, total + 0.4, 1568, 0.6);
+  }
+
+  // En-tête WAV (PCM 8 bits mono)
+  const v = new DataView(buf.buffer);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, TRACK_RATE, true); v.setUint32(28, TRACK_RATE, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, samples, true);
+
+  return { url: URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })), length };
+}
+
+const planTime = () => run.before[run.idx] + Math.min(segElapsed(), cur().dur);
+const trackCovers = (t) => !!run.track && t < run.track.length;
+
+function syncTrack() {
+  if (!run?.track) return;
+  const t = planTime();
+  if (!trackCovers(t)) { trackEl.pause(); return; }
+  trackEl.currentTime = t;
+  if (run.paused) trackEl.pause();
+  else trackEl.play().catch(() => {});
+  if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+    try { navigator.mediaSession.setPositionState({ duration: run.track.length + 2, position: t, playbackRate: 1 }); } catch {}
+  }
+}
+
+// Au retour dans l'appli : la piste a continué (ou a été interrompue, par un appel par exemple), on s'y recale.
+function syncFromTrack() {
+  if (!run || run.finished || !run.track || trackEl.ended) return;
+  const t = trackEl.currentTime;
+  if (t >= run.track.length) return;
+  const i = run.segs.findIndex((s, k) => t < run.before[k] + s.dur);
+  if (i < 0) return;
+  const el = t - run.before[i];
+  const now = performance.now();
+  if (i !== run.idx) enterSegment(i, now, false);
+  run.startedAt = now - el * 1000;
+  if (run.paused) run.pauseElapsed = el;
+  else if (trackEl.paused) pause();
+  draw();
+}
+
+trackEl.addEventListener('pause', () => {
+  // Pause imposée par le téléphone (appel, autre appli audio) pendant que l'appli est en arrière-plan.
+  if (!run || run.finished || run.paused || trackEl.ended || !document.hidden) return;
+  if (performance.now() - run.trackSetAt < 1000) return;
+  pause();
+});
+
+if ('mediaSession' in navigator) {
+  const ms = navigator.mediaSession;
+  const on = (action, fn) => { try { ms.setActionHandler(action, fn); } catch {} };
+  on('play', () => { if (run && !run.finished) resume(); });
+  on('pause', () => { if (run && !run.finished) pause(); });
+  on('nexttrack', () => actions.next());
+  on('previoustrack', () => actions.prev());
+}
+
+/* ================= Notifications ================= */
+
+const NOTIF_TAG = 'sport-timer';
+
+function notify(title, body) {
+  if (!settings.notify || !document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+  navigator.serviceWorker?.ready
+    .then((reg) => reg.showNotification(title, { body, tag: NOTIF_TAG, renotify: true, silent: !!run?.track, icon: 'icon.svg', badge: 'icon.svg' }))
+    .catch(() => {});
+}
+
+function clearNotifications() {
+  navigator.serviceWorker?.getRegistration()
+    .then((reg) => reg?.getNotifications({ tag: NOTIF_TAG }))
+    .then((list) => list?.forEach((n) => n.close()))
+    .catch(() => {});
 }
 
 /* ================= Wake lock (écran allumé) ================= */
@@ -269,7 +382,12 @@ function releaseWakeLock() {
   wakeLock = null;
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && run && !run.finished) requestWakeLock();
+  if (document.visibilityState !== 'visible') return;
+  clearNotifications();
+  if (run && !run.finished) {
+    requestWakeLock();
+    syncFromTrack();
+  }
 });
 
 /* ================= Écrans ================= */
@@ -407,7 +525,19 @@ function startRun() {
     active: 0, lastTick: now,
     cues: new Set(), reps: 0, laps: [], result: null,
     finished: false, timer: null,
+    track: null, trackSetAt: now, lastSyncCheck: now,
   };
+
+  // Piste audio (générée et lancée dans le geste « Démarrer », obligatoire sur iPhone)
+  if (trackEl.src) URL.revokeObjectURL(trackEl.src);
+  trackEl.removeAttribute('src');
+  if (settings.sound) {
+    try {
+      run.track = buildTrack(segs, before, run.total);
+      trackEl.src = run.track.url;
+      trackEl.muted = muted;
+    } catch { run.track = null; }
+  }
 
   const runEl = $('#run');
   runEl.classList.remove('paused');
@@ -419,33 +549,49 @@ function startRun() {
   show('run');
 
   enterSegment(0, now);
+  syncTrack();
   requestWakeLock();
   run.timer = setInterval(tick, 100);
   draw();
 }
 
-function enterSegment(i, at) {
+// announce = false quand on rattrape un intervalle déjà passé (retour dans l'appli) : pas de son en retard.
+function enterSegment(i, at, announce = true) {
   run.idx = i;
   run.startedAt = at;
   run.pauseElapsed = 0;
   run.cues.clear();
   const seg = cur();
-
-  // Signal de transition
-  if (seg.kind === 'work') { beep(1175, 0.5); buzz([250]); } else { beep(660, 0.5); buzz([120, 80, 120]); }
-  speak(seg.say);
-
-  // Habillage
   const ph = PHASES[seg.kind];
-  $('#run').style.setProperty('--phase', seg.color || ph.color);
-  $('#phase-label').textContent = seg.label || ph.label;
+  const label = seg.label || ph.label;
 
   const info = [];
   if (seg.step) info.push(`Exercice ${seg.step}/${seg.steps}`);
   if (seg.round && run.mode !== 'emom') info.push(`${run.mode === 'circuit' ? 'Tour' : 'Round'} ${seg.round}/${seg.rounds}`);
   if (seg.round && run.mode === 'emom') info.push(`${seg.round}/${seg.rounds}`);
   if (seg.sets > 1) info.push(`Série ${seg.set}/${seg.sets}`);
-  $('#phase-info').textContent = info.join(' · ');
+  const infoText = info.join(' · ');
+
+  // Signal de transition (le bip est dans la piste audio quand elle couvre ce moment)
+  if (announce) {
+    const viaTrack = trackCovers(run.before[i]);
+    if (seg.kind === 'work') { if (!viaTrack) beep(1175, 0.5); buzz([250]); }
+    else { if (!viaTrack) beep(660, 0.5); buzz([120, 80, 120]); }
+    speak(seg.say);
+    notify(`${label}${isFinite(seg.dur) ? ' · ' + fmt(seg.dur) : ''}`, [run.name, infoText].filter(Boolean).join(' · '));
+  }
+
+  if ('mediaSession' in navigator && window.MediaMetadata) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: label, artist: [run.name, infoText].filter(Boolean).join(' · '), album: 'Sport Timer',
+      artwork: [{ src: 'icon.svg', sizes: '512x512', type: 'image/svg+xml' }],
+    });
+  }
+
+  // Habillage
+  $('#run').style.setProperty('--phase', seg.color || ph.color);
+  $('#phase-label').textContent = label;
+  $('#phase-info').textContent = infoText;
 
   const n = run.segs[i + 1];
   $('#next').textContent = n
@@ -463,14 +609,21 @@ function tick() {
     run.active += now - run.lastTick;
     let seg = cur();
     let el = (now - run.startedAt) / 1000;
-    // Boucle : rattrape plusieurs intervalles si l'onglet a été mis en veille.
+    // Boucle : rattrape plusieurs intervalles si l'appli a été mise en veille.
     while (el >= seg.dur) {
-      if (run.idx + 1 >= run.segs.length) { finish(); return; }
-      enterSegment(run.idx + 1, run.startedAt + seg.dur * 1000);
+      if (run.idx + 1 >= run.segs.length) { finish(true); return; }
+      const at = run.startedAt + seg.dur * 1000;
+      enterSegment(run.idx + 1, at, now - at < 1500);
       seg = cur();
       el = (now - run.startedAt) / 1000;
     }
     cues(seg, el);
+    // Appli ouverte : la piste doit jouer et rester calée sur le timer (vérifié chaque seconde).
+    if (run.track && !document.hidden && now - run.lastSyncCheck > 1000) {
+      run.lastSyncCheck = now;
+      const t = planTime();
+      if (trackCovers(t) && (trackEl.paused || Math.abs(trackEl.currentTime - t) > 0.3)) syncTrack();
+    }
   }
   run.lastTick = now;
   draw();
@@ -485,7 +638,7 @@ function cue(key, fn) {
 function cues(seg, el) {
   if (!isFinite(seg.dur)) return;
   const left = Math.ceil(seg.dur - el);
-  if (left <= 3 && left >= 1) cue('c' + left, () => { beep(880, 0.12); buzz(40); });
+  if (left <= 3 && left >= 1) cue('c' + left, () => { if (!trackCovers(planTime())) beep(880, 0.12); buzz(40); });
   if (seg.dur >= 30 && left === 10) cue('10', () => speak('10 secondes'));
   if (seg.dur >= 180 && left === 60) cue('60', () => speak('Plus qu’une minute'));
   if (seg.dur >= 120 && seg.kind === 'work' && el >= seg.dur / 2) cue('half', () => speak('Mi-parcours'));
@@ -527,6 +680,7 @@ function pause() {
   run.active += performance.now() - run.lastTick;
   run.paused = true;
   $('#run').classList.add('paused');
+  trackEl.pause();
   window.speechSynthesis?.cancel();
   draw();
 }
@@ -539,6 +693,7 @@ function resume() {
   run.lastTick = now;
   run.paused = false;
   $('#run').classList.remove('paused');
+  syncTrack();
   draw();
 }
 
@@ -547,10 +702,12 @@ function goTo(i) {
   if (!run.paused) run.active += now - run.lastTick;
   run.lastTick = now;
   enterSegment(i, now);
+  syncTrack();
   draw();
 }
 
-function finish() {
+// natural = fin normale de la séance : la fanfare est déjà dans la piste audio.
+function finish(natural = false) {
   if (!run || run.finished) return;
   const seg = cur();
   if (!run.paused) run.active += performance.now() - run.lastTick;
@@ -559,9 +716,13 @@ function finish() {
   clearInterval(run.timer);
   releaseWakeLock();
 
-  beep(1046, 0.18, 0); beep(1318, 0.18, 0.2); beep(1568, 0.6, 0.4);
+  if (!(natural && trackCovers(run.total - 0.001))) {
+    trackEl.pause();
+    beep(1046, 0.18, 0); beep(1318, 0.18, 0.2); beep(1568, 0.6, 0.4);
+  }
   buzz([200, 100, 200, 100, 400]);
   speak('Terminé ! Bravo !');
+  notify('Terminé ! Bravo 🎉', run.name);
 
   const active = Math.round(run.active / 1000);
   sessions.unshift({
@@ -591,6 +752,7 @@ function quit() {
     clearInterval(run.timer);
     run.finished = true;
   }
+  trackEl.pause();
   releaseWakeLock();
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   renderHome();
@@ -652,6 +814,7 @@ const actions = {
   mute() {
     muted = !muted;
     $('#mute-btn').textContent = muted ? '🔇' : '🔊';
+    trackEl.muted = muted;
     if (muted && 'speechSynthesis' in window) speechSynthesis.cancel();
   },
 
@@ -727,7 +890,27 @@ document.addEventListener('change', (e) => {
   if (!key) return;
   settings[key] = e.target.checked;
   store.set('settings', settings);
+  if (key === 'notify' && settings.notify) {
+    if (!('Notification' in window)) {
+      e.target.checked = settings.notify = false;
+      store.set('settings', settings);
+      alertNote('Ce navigateur ne gère pas les notifications. Sur iPhone : ajoutez d’abord l’appli à l’écran d’accueil.');
+      return;
+    }
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') return alertNote('');
+      e.target.checked = settings.notify = false;
+      store.set('settings', settings);
+      alertNote('Notifications refusées : autorisez-les dans les réglages du navigateur pour ce site.');
+    });
+  }
 });
+
+function alertNote(text) {
+  const el = $('#settings-note');
+  el.textContent = text;
+  el.hidden = !text;
+}
 
 document.addEventListener('keydown', (e) => {
   if ($('#run').hidden || !run || run.finished || e.target.matches('input')) return;
