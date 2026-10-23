@@ -128,6 +128,55 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
+/* ================= Journal des erreurs ================= */
+
+// Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
+const APP_VERSION = '1.1';
+const SITE = 'https://sport-timer-2iv.pages.dev';
+
+function deviceId() {
+  let id = store.get('device', '');
+  if (!/^[0-9a-f]{16}$/.test(id)) {
+    id = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    store.set('device', id);
+  }
+  return id;
+}
+
+function platformName() {
+  const ua = navigator.userAgent;
+  const os = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone'
+    : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'Mac' : 'autre';
+  const nav = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung' : /Firefox|FxiOS/.test(ua) ? 'Firefox'
+    : /Chrome|CriOS/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'autre';
+  return `Web · ${os} · ${nav}${matchMedia('(display-mode: standalone)').matches ? ' · écran d’accueil' : ''}`;
+}
+
+// La même erreur au plus une fois par heure, 20 au plus par jour (pas d'avalanche).
+function report(type, message) {
+  message = String(message ?? '').trim().slice(0, 500);
+  if (!message || !navigator.onLine || !location.protocol.startsWith('http')) return;
+  const now = Date.now(), today = new Date().toISOString().slice(0, 10);
+  let seen = store.get('reported', {});
+  if (seen.day !== today) seen = { day: today, n: 0, last: {} };
+  if (seen.n >= 20 || now - (seen.last[message] || 0) < 3600000) return;
+  seen.n++;
+  seen.last[message] = now;
+  store.set('reported', seen);
+  const screen = document.querySelector('.screen:not([hidden])')?.id ?? '';
+  fetch(`${SITE}/api/journal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+    body: JSON.stringify({ kind: 'error', device: deviceId(), platform: platformName(), version: APP_VERSION, type, message, screen }),
+  }).catch(() => {});
+}
+
+// « Script error. » sans fichier : code venu d'ailleurs (extension, traduction du navigateur), ignoré.
+window.addEventListener('error', (e) => {
+  if (!e.filename || !e.filename.startsWith(location.origin)) return;
+  report('plantage', `${e.message} (${e.filename.split('/').pop()}:${e.lineno}:${e.colno})`);
+});
+window.addEventListener('unhandledrejection', (e) => report('plantage', e.reason?.message ?? String(e.reason)));
+
 /* ================= État ================= */
 
 const settings = { sound: true, voice: true, vibrate: true, notify: false, ...store.get('settings', {}) };
