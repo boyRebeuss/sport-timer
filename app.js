@@ -131,7 +131,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.1';
+const APP_VERSION = '1.3';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -304,6 +304,7 @@ function speak(text) {
   u.lang = 'fr-FR';
   if (frVoice) u.voice = frVoice;
   u.rate = 1.05;
+  u.volume = 1;
   speechSynthesis.speak(u);
 }
 
@@ -690,10 +691,10 @@ function cue(key, fn) {
 function cues(seg, el) {
   if (!isFinite(seg.dur)) return;
   const left = Math.ceil(seg.dur - el);
-  if (left <= 3 && left >= 1) cue('c' + left, () => { if (!trackCovers(planTime())) beep(880, 0.12); buzz(40); });
+  if (left <= 3 && left >= 1) cue('c' + left, () => { if (!trackCovers(planTime())) beep(880, 0.12); buzz(40); speak(String(left)); });
   if (seg.dur >= 30 && left === 10) cue('10', () => speak('10 secondes'));
   if (seg.dur >= 180 && left === 60) cue('60', () => speak('Plus qu’une minute'));
-  if (seg.dur >= 120 && seg.kind === 'work' && el >= seg.dur / 2) cue('half', () => speak('Mi-parcours'));
+  if (seg.dur >= 20 && seg.kind === 'work' && el >= seg.dur / 2) cue('half', () => speak('Mi-parcours'));
 }
 
 function draw() {
