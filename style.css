@@ -427,3 +427,4 @@ button.item { width: 100%; }
   padding: 12px 14px; outline: 0; line-height: 1.4;
 }
 .session-note:focus { border-color: #3a4150; }
+.icon-btn.close { font-size: 18px; }

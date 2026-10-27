@@ -91,6 +91,7 @@ const LAST_KEY = 'last2_';
 
 // Séances gardées dans le calendrier (environ 1 Ko chacune).
 const MAX_SESSIONS = 3000;
+const MIN_ACTIVE = 10; // secondes
 
 /* ================= Utilitaires ================= */
 
@@ -134,7 +135,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -527,7 +528,8 @@ function weekStart(t = Date.now()) {
 
 function renderWeek() {
   const days = byDay(), start = weekStart(), today = dayKey(Date.now());
-  const week = sessions.filter((s) => s.date >= start.getTime());
+  const end = new Date(start); end.setDate(end.getDate() + 7);
+  const week = sessions.filter((s) => s.date >= start.getTime() && s.date < end.getTime());
   const active = week.reduce((a, s) => a + (s.active || 0), 0);
   const cells = WEEKDAYS.map((w, i) => {
     const d = new Date(start); d.setDate(d.getDate() + i);
@@ -591,7 +593,10 @@ function renderCalendar() {
   const activeDays = new Set(inMonth.map((s) => dayKey(s.date))).size;
   const stats = [[inMonth.length, inMonth.length > 1 ? 'Séances' : 'Séance'], [fmtDur(active), 'Temps actif'],
     [activeDays, activeDays > 1 ? 'Jours actifs' : 'Jour actif']];
-  stats.push(work ? [fmtDur(work), 'Temps d’effort'] : [streak(days), 'Jours d’affilée (série en cours)']);
+  // La série en cours ne concerne que le mois actuel.
+  const thisMonth = y === new Date().getFullYear() && m === new Date().getMonth();
+  if (work) stats.push([fmtDur(work), 'Temps d’effort']);
+  else if (thisMonth) stats.push([streak(days), 'Jours d’affilée (série en cours)']);
   $('#month-stats').innerHTML = statsHtml(stats);
 
   const dayTitle = keyDate(calDay).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -710,7 +715,8 @@ function openConfig(mode, cfg, name = '') {
     </div>`).join('');
 
   $('#steps-wrap').hidden = !m.steps;
-  if (m.steps) renderSteps();
+  // Vide l'enchaînement d'un Circuit ouvert avant : ses curseurs feraient planter updateConfig().
+  if (m.steps) renderSteps(); else $('#steps').innerHTML = '';
   updateConfig();
   show('config');
 }
@@ -886,9 +892,10 @@ function tick() {
   draw();
 }
 
-// Temps réellement passé dans chaque intervalle (effort, repos… pour le calendrier).
+// Temps réellement passé dans chaque intervalle (effort, repos… pour le calendrier),
+// jamais plus que sa durée, même si on le refait avec « Précédent ».
 function credit(i, sec) {
-  run.spent[i] = (run.spent[i] || 0) + clamp(sec, 0, run.segs[i].dur);
+  run.spent[i] = Math.min((run.spent[i] || 0) + Math.max(0, sec), run.segs[i].dur);
 }
 
 function cue(key, fn) {
@@ -950,6 +957,7 @@ function pause() {
 
 function resume() {
   if (!run.paused) return;
+  run.stopPaused = false;
   initAudio();
   const now = performance.now();
   run.startedAt = now - run.pauseElapsed * 1000;
@@ -976,6 +984,9 @@ function finish(natural = false) {
   if (!run || run.finished) return;
   const seg = cur();
   if (!run.paused) run.active += performance.now() - run.lastTick;
+  run.lastTick = performance.now();
+  // Arrêtée moins de 10 s après le départ : pas une vraie séance, rien n'est enregistré.
+  if (!natural && run.active < MIN_ACTIVE * 1000) return quit();
   if (seg.countUp) run.result = Math.floor(Math.min(segElapsed(), seg.dur));
   run.finished = true;
   clearInterval(run.timer);
