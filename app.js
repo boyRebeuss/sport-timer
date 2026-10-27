@@ -615,7 +615,7 @@ const statsHtml = (stats) => stats.map(([v, l]) => `<div class="stat"><b>${v}</b
 
 function sessionStats(s) {
   const st = [[fmt(s.active), 'Durée active']];
-  if (s.wall != null && s.wall - s.active >= 5) st.push([fmt(s.wall), 'Durée totale, pauses comprises']);
+  if (s.wall != null && s.wall - s.active >= 5) st.push([fmt(s.wall), 'Durée avec les pauses']);
   if (s.work) st.push([fmt(s.work), 'Temps d’effort']);
   if (s.rest) st.push([fmt(s.rest), 'Temps de repos']);
   if (s.intervals) st.push([`${s.intervals.done}/${s.intervals.total}`, 'Intervalles d’effort']);
