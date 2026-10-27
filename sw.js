@@ -1,4 +1,4 @@
-const CACHE = 'sport-timer-v8';
+const CACHE = 'sport-timer-v9';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (e) => {

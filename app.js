@@ -134,7 +134,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -480,9 +480,6 @@ function renderHome() {
     : '<div class="empty">Configurez une séance puis enregistrez-la ici.</div>';
 
   renderWeek();
-  $('#history').innerHTML = sessions.length
-    ? sessions.slice(0, 5).map(sessionItem).join('')
-    : '<div class="empty">Aucune séance pour l’instant. Chaque séance terminée s’inscrit dans le calendrier.</div>';
 
   document.querySelectorAll('[data-setting]').forEach((el) => { el.checked = settings[el.dataset.setting]; });
   $('#volume').value = Math.round(settings.volume * 100);
