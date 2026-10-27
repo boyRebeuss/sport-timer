@@ -131,7 +131,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -179,7 +179,7 @@ window.addEventListener('unhandledrejection', (e) => report('plantage', e.reason
 
 /* ================= État ================= */
 
-const settings = { sound: true, voice: true, vibrate: true, notify: false, ...store.get('settings', {}) };
+const settings = { sound: true, voice: true, vibrate: true, notify: false, volume: 1, ...store.get('settings', {}) };
 let favorites = store.get('favorites', []);
 let sessions = store.get('sessions', []);
 let current = null; // { mode, cfg, name }
@@ -289,7 +289,7 @@ function beep(freq = 880, dur = 0.15, when = 0, vol = 0.6) {
   osc.type = 'sine';
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(vol * settings.volume, t + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(gain).connect(audioCtx.destination);
   osc.start(t);
@@ -304,7 +304,7 @@ function speak(text) {
   u.lang = 'fr-FR';
   if (frVoice) u.voice = frVoice;
   u.rate = 1.05;
-  u.volume = 1;
+  u.volume = settings.volume;
   speechSynthesis.speak(u);
 }
 
@@ -341,11 +341,14 @@ function buildTrack(segs, before, total) {
 
   segs.forEach((s, i) => {
     const T = before[i];
-    if (s.kind === 'work') tone(data, T, 1175, 0.5); else tone(data, T, 660, 0.5);
-    if (isFinite(s.dur)) for (let k = 1; k <= 3 && k < s.dur; k++) tone(data, T + s.dur - k, 880, 0.12);
+    // Volume de l'appli appliqué dans la piste elle-même (iPhone ignore le volume d'un <audio>).
+    const vol = 0.85 * settings.volume;
+    if (s.kind === 'work') tone(data, T, 1175, 0.5, vol); else tone(data, T, 660, 0.5, vol);
+    if (isFinite(s.dur)) for (let k = 1; k <= 3 && k < s.dur; k++) tone(data, T + s.dur - k, 880, 0.12, vol);
   });
   if (isFinite(total) && total <= TRACK_MAX) {
-    tone(data, total, 1046, 0.18); tone(data, total + 0.2, 1318, 0.18); tone(data, total + 0.4, 1568, 0.6);
+    const vol = 0.85 * settings.volume;
+    tone(data, total, 1046, 0.18, vol); tone(data, total + 0.2, 1318, 0.18, vol); tone(data, total + 0.4, 1568, 0.6, vol);
   }
 
   // En-tête WAV (PCM 8 bits mono)
@@ -490,6 +493,8 @@ function renderHome() {
   $('[data-action="clear-history"]').hidden = !sessions.length;
 
   document.querySelectorAll('[data-setting]').forEach((el) => { el.checked = settings[el.dataset.setting]; });
+  $('#volume').value = Math.round(settings.volume * 100);
+  $('#volume-value').textContent = Math.round(settings.volume * 100) + ' %';
 }
 
 function openConfig(mode, cfg, name = '') {
@@ -935,10 +940,17 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (t.id === 'volume') {
+    settings.volume = t.value / 100;
+    $('#volume-value').textContent = t.value + ' %';
+    store.set('settings', settings);
+  }
   if (t.classList.contains('step-name')) current.cfg.steps[+t.dataset.i].name = t.value;
 });
 
 document.addEventListener('change', (e) => {
+  // Bip d'essai au volume choisi, quand on lâche le curseur.
+  if (e.target.id === 'volume') { initAudio(); beep(1175, 0.4); return; }
   const key = e.target.dataset.setting;
   if (!key) return;
   settings[key] = e.target.checked;

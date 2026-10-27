@@ -135,7 +135,10 @@ h3 {
 }
 .toggle:last-child { border-bottom: 0; }
 .toggle input { display: none; }
-.toggle span small { display: block; color: var(--muted); font-size: 12px; }
+.toggle span small, .volume span small { display: block; color: var(--muted); font-size: 12px; }
+.volume { display: block; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.volume b { float: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.volume input { width: 100%; margin: 12px 0 2px; accent-color: #22c55e; height: 28px; }
 .note { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 10px 4px 0; }
 .note.warn { color: #fbbf24; }
 .toggle i {
