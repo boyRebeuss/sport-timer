@@ -27,7 +27,8 @@
     <h3>Favoris</h3>
     <div id="favs" class="list"></div>
 
-    <h3>Historique <button class="link" data-action="clear-history">Effacer</button></h3>
+    <h3>Mes séances</h3>
+    <button id="week" class="week-card" data-action="calendar"></button>
     <div id="history" class="list"></div>
 
     <h3>Réglages</h3>
@@ -40,7 +41,7 @@
     </div>
     <p id="settings-note" class="note warn" hidden></p>
     <p class="note">Les bips continuent quand vous quittez l’appli ou verrouillez l’écran. La voix et les vibrations ne marchent que quand l’appli est ouverte.</p>
-    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.4#avis" target="_blank" rel="noopener">💬 Donner mon avis · Infos sur l’appli</a></p>
+    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.5#avis" target="_blank" rel="noopener">💬 Donner mon avis · Infos sur l’appli</a></p>
   </section>
 
   <!-- Configuration -->
@@ -151,8 +152,41 @@
     </div>
     <div id="stats" class="stats"></div>
     <ol id="done-laps" class="laps card"></ol>
+    <div id="done-journal"></div>
     <button class="primary big" data-action="restart">Recommencer</button>
     <button class="ghost big" data-action="home">Accueil</button>
+  </section>
+
+  <!-- Calendrier des séances -->
+  <section id="calendar" class="screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="home" aria-label="Retour">‹</button>
+      <h2>Calendrier</h2>
+      <span class="icon-btn-spacer"></span>
+    </header>
+    <div class="month-nav">
+      <button class="icon-btn" data-action="month-prev" aria-label="Mois précédent">‹</button>
+      <div id="month-title" class="month-title"></div>
+      <button class="icon-btn" data-action="month-next" aria-label="Mois suivant">›</button>
+    </div>
+    <div class="cal-head"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+    <div id="cal-grid" class="cal-grid"></div>
+    <div id="month-stats" class="stats month-stats"></div>
+    <h3 id="day-title"></h3>
+    <div id="day-list" class="list"></div>
+    <button class="link danger" data-action="clear-history" id="clear-history">Effacer tout l’historique</button>
+  </section>
+
+  <!-- Détail d'une séance -->
+  <section id="session" class="screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="session-back" aria-label="Retour">‹</button>
+      <h2>Séance</h2>
+      <span class="icon-btn-spacer"></span>
+    </header>
+    <div id="session-body"></div>
+    <button class="primary big" data-action="session-redo">Refaire cette séance</button>
+    <button class="link danger" data-action="session-del" id="session-del">Supprimer cette séance</button>
   </section>
 
   <script src="app.js"></script>

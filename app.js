@@ -89,6 +89,9 @@ const RING_C = 2 * Math.PI * 90;
 // Derniers réglages de chaque mode. Clé changée (« last2_ ») quand les valeurs par défaut changent, pour qu'elles s'appliquent.
 const LAST_KEY = 'last2_';
 
+// Séances gardées dans le calendrier (environ 1 Ko chacune).
+const MAX_SESSIONS = 3000;
+
 /* ================= Utilitaires ================= */
 
 const $ = (sel) => document.querySelector(sel);
@@ -131,7 +134,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -386,6 +389,7 @@ function syncFromTrack() {
   if (i < 0) return;
   const el = t - run.before[i];
   const now = performance.now();
+  if (i > run.idx) for (let k = run.idx; k < i; k++) credit(k, Infinity);
   if (i !== run.idx) enterSegment(i, now, false);
   run.startedAt = now - el * 1000;
   if (run.paused) run.pauseElapsed = el;
@@ -475,27 +479,222 @@ function renderHome() {
       </div>`).join('')
     : '<div class="empty">Configurez une séance puis enregistrez-la ici.</div>';
 
+  renderWeek();
   $('#history').innerHTML = sessions.length
-    ? sessions.slice(0, 8).map((s) => {
-      const d = new Date(s.date);
-      const when = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      const extra = s.reps != null ? ` · ${s.reps} rounds` : s.result != null ? ` · ${fmt(s.result)}` : '';
-      return `
-      <div class="item">
-        <span class="item-icon">${MODES[s.mode]?.icon ?? '⏱️'}</span>
-        <div class="item-main">
-          <div class="item-title">${esc(s.name)}</div>
-          <div class="item-sub">${when} · ${fmt(s.active)}${extra}</div>
-        </div>
-      </div>`;
-    }).join('')
-    : '<div class="empty">Aucune séance pour l’instant.</div>';
-  $('[data-action="clear-history"]').hidden = !sessions.length;
+    ? sessions.slice(0, 5).map(sessionItem).join('')
+    : '<div class="empty">Aucune séance pour l’instant. Chaque séance terminée s’inscrit dans le calendrier.</div>';
 
   document.querySelectorAll('[data-setting]').forEach((el) => { el.checked = settings[el.dataset.setting]; });
   $('#volume').value = Math.round(settings.volume * 100);
   $('#volume-value').textContent = Math.round(settings.volume * 100) + ' %';
 }
+
+/* ================= Calendrier ================= */
+
+const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const FEELS = ['Facile', 'Modérée', 'Difficile', 'Très dure', 'À fond'];
+let calMonth = null;   // 1er jour du mois affiché
+let calDay = null;     // jour choisi (« 2026-10-27 »)
+let viewing = null;    // séance ouverte en détail
+let viewingFrom = 'calendar';
+let confirmUntil = 0;  // double appui pour les suppressions
+
+const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const keyDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+const findSession = (id) => sessions.find((s) => String(s.date) === String(id));
+const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+const fmtDur = (sec) => (sec < 60 ? `${sec} s` : fmtTotal(sec));
+
+function byDay() {
+  const map = {};
+  for (const s of sessions) (map[dayKey(s.date)] ??= []).push(s);
+  return map;
+}
+
+// Jours d'affilée avec au moins une séance, jusqu'à aujourd'hui (ou hier).
+function streak(days) {
+  const d = new Date();
+  if (!days[dayKey(d)]) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while (days[dayKey(d)]) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+function weekStart(t = Date.now()) {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+function renderWeek() {
+  const days = byDay(), start = weekStart(), today = dayKey(Date.now());
+  const week = sessions.filter((s) => s.date >= start.getTime());
+  const active = week.reduce((a, s) => a + (s.active || 0), 0);
+  const cells = WEEKDAYS.map((w, i) => {
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    const list = days[dayKey(d)] || [];
+    const color = list.length ? MODES[list[0].mode]?.color ?? 'var(--muted)' : '';
+    return `<span class="wk-day${dayKey(d) === today ? ' today' : ''}"><small>${w}</small><i${list.length ? ` class="on" style="--c:${color}"` : ''}></i></span>`;
+  }).join('');
+  const st = streak(days);
+  $('#week').innerHTML = `
+    <span class="wk-days">${cells}</span>
+    <span class="wk-text"><b>${week.length ? `${plural(week.length, 'séance')} cette semaine` : 'Aucune séance cette semaine'}</b>
+    <small>${week.length ? `${fmtDur(active)} d’activité · ` : ''}${st > 1 ? `${st} jours d’affilée · ` : ''}Calendrier ›</small></span>`;
+}
+
+function sessionItem(s) {
+  const d = new Date(s.date);
+  const when = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + hhmm(s.date);
+  const extra = s.reps != null ? ` · ${s.reps} rounds` : s.result != null ? ` · ${fmt(s.result)}` : '';
+  const stopped = s.complete === false ? ` · <span class="warn">arrêtée à ${s.progress} %</span>` : '';
+  return `
+    <button class="item" data-session="${s.date}">
+      <span class="item-icon">${MODES[s.mode]?.icon ?? '⏱️'}</span>
+      <span class="item-main">
+        <span class="item-title">${esc(s.name)}</span>
+        <span class="item-sub">${when} · ${fmt(s.active)}${extra}${stopped}</span>
+      </span>
+      ${s.feel ? `<span class="feel-tag">${FEELS[s.feel - 1]}</span>` : ''}
+      <span class="chev">›</span>
+    </button>`;
+}
+
+function openCalendar(day = calDay || dayKey(Date.now())) {
+  calDay = day;
+  const d = keyDate(day);
+  calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  renderCalendar();
+  show('calendar');
+}
+
+function renderCalendar() {
+  const days = byDay(), today = dayKey(Date.now());
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const title = calMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  $('#month-title').textContent = title[0].toUpperCase() + title.slice(1);
+
+  const offset = (calMonth.getDay() + 6) % 7, count = new Date(y, m + 1, 0).getDate();
+  let html = '<span></span>'.repeat(offset);
+  for (let n = 1; n <= count; n++) {
+    const key = `${y}-${pad(m + 1)}-${pad(n)}`;
+    const list = days[key] || [];
+    const dots = [...new Set(list.map((s) => s.mode))].slice(0, 3)
+      .map((mode) => `<i style="--c:${MODES[mode]?.color ?? '#8b93a3'}"></i>`).join('');
+    const cls = ['cal-day', list.length && 'has', key === today && 'today', key === calDay && 'sel', key > today && 'future'].filter(Boolean).join(' ');
+    html += `<button class="${cls}" data-day="${key}"><b>${n}</b><span class="dots">${dots}</span></button>`;
+  }
+  $('#cal-grid').innerHTML = html;
+
+  const inMonth = sessions.filter((s) => { const d = new Date(s.date); return d.getFullYear() === y && d.getMonth() === m; });
+  const active = inMonth.reduce((a, s) => a + (s.active || 0), 0);
+  const work = inMonth.reduce((a, s) => a + (s.work || 0), 0);
+  const activeDays = new Set(inMonth.map((s) => dayKey(s.date))).size;
+  const stats = [[inMonth.length, inMonth.length > 1 ? 'Séances' : 'Séance'], [fmtDur(active), 'Temps actif'],
+    [activeDays, activeDays > 1 ? 'Jours actifs' : 'Jour actif']];
+  stats.push(work ? [fmtDur(work), 'Temps d’effort'] : [streak(days), 'Jours d’affilée (série en cours)']);
+  $('#month-stats').innerHTML = statsHtml(stats);
+
+  const dayTitle = keyDate(calDay).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('#day-title').textContent = calDay === today ? `Aujourd’hui · ${dayTitle}` : dayTitle;
+  const list = days[calDay] || [];
+  $('#day-list').innerHTML = list.length
+    ? list.slice().reverse().map(sessionItem).join('')
+    : `<div class="empty">${calDay > today ? 'Ce jour n’est pas encore passé.' : 'Aucune séance ce jour-là.'}</div>`;
+
+  const clear = $('#clear-history');
+  clear.hidden = !sessions.length;
+  clear.textContent = 'Effacer tout l’historique';
+}
+
+/* ================= Détail d'une séance ================= */
+
+const statsHtml = (stats) => stats.map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+
+function sessionStats(s) {
+  const st = [[fmt(s.active), 'Durée active']];
+  if (s.wall != null && s.wall - s.active >= 5) st.push([fmt(s.wall), 'Durée totale, pauses comprises']);
+  if (s.work) st.push([fmt(s.work), 'Temps d’effort']);
+  if (s.rest) st.push([fmt(s.rest), 'Temps de repos']);
+  if (s.intervals) st.push([`${s.intervals.done}/${s.intervals.total}`, 'Intervalles d’effort']);
+  if (s.reps != null) {
+    st.push([s.reps, 'Rounds']);
+    if (s.reps) st.push([fmt(Math.round((s.work || s.active) / s.reps)), 'Moyenne / round']);
+  }
+  if (s.result != null) st.push([fmt(s.result), s.capped ? 'Time cap atteint' : 'Temps final']);
+  if (s.laps?.length) st.push([s.laps.length, s.laps.length > 1 ? 'Tours notés' : 'Tour noté']);
+  if (s.complete === false && s.progress != null) st.push([`${s.progress} %`, 'De la séance prévue']);
+  if (s.pauses) st.push([s.pauses, s.pauses > 1 ? 'Pauses' : 'Pause']);
+  if (s.skipped) st.push([s.skipped, s.skipped > 1 ? 'Intervalles passés' : 'Intervalle passé']);
+  return st;
+}
+
+function journalHtml(s) {
+  return `
+    <div class="journal" data-id="${s.date}">
+      <h3>Ressenti</h3>
+      <div class="feels">${FEELS.map((f, i) => `<button class="feel${s.feel === i + 1 ? ' on' : ''}" data-action="feel" data-v="${i + 1}"><b>${i + 1}</b><small>${f}</small></button>`).join('')}</div>
+      <textarea class="session-note" maxlength="500" rows="3" placeholder="Une note : forme du jour, charges, douleurs, lieu…">${esc(s.note || '')}</textarea>
+    </div>`;
+}
+
+function openSession(id, from) {
+  const s = findSession(id);
+  if (!s) return;
+  viewing = s;
+  viewingFrom = from;
+  const m = MODES[s.mode] ?? { icon: '⏱️', name: s.mode, fields: [] };
+  if (m.color) document.documentElement.style.setProperty('--accent', m.color);
+  const d = new Date(s.date);
+  const day = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const hours = s.end ? `${hhmm(s.date)} → ${hhmm(s.end)}` : hhmm(s.date);
+  const status = s.complete === false
+    ? `<span class="badge warn">Arrêtée avant la fin${s.progress != null ? ` · ${s.progress} %` : ''}</span>`
+    : s.complete ? '<span class="badge ok">Séance terminée</span>' : '';
+  const reached = [];
+  if (s.complete === false && s.round) reached.push(`${s.mode === 'circuit' ? 'Tour' : s.mode === 'emom' ? 'Intervalle' : 'Round'} ${s.round}/${s.rounds}`);
+  if (s.complete === false && s.sets > 1) reached.push(`série ${s.set}/${s.sets}`);
+
+  let html = `
+    <div class="session-head" style="--c:${m.color ?? 'var(--muted)'}">
+      <span class="session-icon">${m.icon}</span>
+      <div>
+        <h2>${esc(s.name)}</h2>
+        <p class="muted">${m.name !== s.name ? m.name + ' · ' : ''}${day[0].toUpperCase() + day.slice(1)}<br>${hours}</p>
+        ${status}${reached.length ? `<p class="muted small">Arrivé à : ${reached.join(', ')}</p>` : ''}
+      </div>
+    </div>
+    <div class="stats">${statsHtml(sessionStats(s))}</div>`;
+  if (s.laps?.length) html += `<h3>Temps de passage</h3><ol class="laps card">${lapsHtml(s.laps)}</ol>`;
+
+  if (s.cfg && m.fields.length) {
+    const rows = m.fields.filter((f) => s.cfg[f] != null && !(f === 'setRest' && s.cfg.sets <= 1) && !(['prepare', 'cooldown', 'roundRest'].includes(f) && !s.cfg[f]))
+      .map((f) => `<div class="field"><span class="field-label">${(m.labels && m.labels[f]) || FIELDS[f].label}</span><b>${fmtField(f, s.cfg[f])}</b></div>`);
+    if (s.planned) rows.push(`<div class="field"><span class="field-label">Durée prévue</span><b>${fmtTotal(s.planned)}</b></div>`);
+    html += `<h3>Réglages</h3><div class="card">${rows.join('')}</div>`;
+    if (s.cfg.steps?.length) {
+      html += `<h3>Enchaînement</h3><div class="card">${s.cfg.steps.map((st) => `
+        <div class="field"><span class="field-label"><i class="dot-kind" data-kind="${st.kind}"></i>${esc(st.name.trim() || PHASES[st.kind].label)}</span><b>${fmt(st.dur)}</b></div>`).join('')}</div>`;
+    }
+  }
+  html += journalHtml(s);
+  $('#session-body').innerHTML = html;
+  $('#session-del').textContent = 'Supprimer cette séance';
+  confirmUntil = 0;
+  show('session');
+}
+
+// Premier appui : demande de confirmation ; second appui dans les 4 s : on agit.
+function confirmed(el, text) {
+  if (Date.now() < confirmUntil) { confirmUntil = 0; return true; }
+  confirmUntil = Date.now() + 4000;
+  el.textContent = text;
+  return false;
+}
+
+function saveSessions() { store.set('sessions', sessions); }
 
 function openConfig(mode, cfg, name = '') {
   const m = MODES[mode];
@@ -577,11 +776,13 @@ function startRun() {
   run = {
     mode: current.mode,
     name: current.name || MODES[current.mode].name,
+    cfg: clone(current.cfg), startDate: Date.now(),
     segs, before,
     total: totalOf(segs),
     idx: 0, startedAt: now, paused: false, pauseElapsed: 0,
     active: 0, lastTick: now,
     cues: new Set(), reps: 0, laps: [], result: null,
+    spent: [], pauses: 0, skipped: 0,
     finished: false, timer: null,
     track: null, trackSetAt: now, lastSyncCheck: now,
   };
@@ -671,6 +872,7 @@ function tick() {
     while (el >= seg.dur) {
       if (run.idx + 1 >= run.segs.length) { finish(true); return; }
       const at = run.startedAt + seg.dur * 1000;
+      credit(run.idx, seg.dur);
       enterSegment(run.idx + 1, at, now - at < 1500);
       seg = cur();
       el = (now - run.startedAt) / 1000;
@@ -685,6 +887,11 @@ function tick() {
   }
   run.lastTick = now;
   draw();
+}
+
+// Temps réellement passé dans chaque intervalle (effort, repos… pour le calendrier).
+function credit(i, sec) {
+  run.spent[i] = (run.spent[i] || 0) + clamp(sec, 0, run.segs[i].dur);
 }
 
 function cue(key, fn) {
@@ -737,6 +944,7 @@ function pause() {
   run.pauseElapsed = segElapsed();
   run.active += performance.now() - run.lastTick;
   run.paused = true;
+  run.pauses++;
   $('#run').classList.add('paused');
   trackEl.pause();
   window.speechSynthesis?.cancel();
@@ -759,6 +967,8 @@ function goTo(i) {
   const now = performance.now();
   if (!run.paused) run.active += now - run.lastTick;
   run.lastTick = now;
+  credit(run.idx, segElapsed(now));
+  if (i > run.idx) run.skipped++;
   enterSegment(i, now);
   syncTrack();
   draw();
@@ -782,27 +992,47 @@ function finish(natural = false) {
   speak('Terminé ! Bravo !');
   notify('Terminé ! Bravo 🎉', run.name);
 
-  const active = Math.round(run.active / 1000);
-  sessions.unshift({
-    date: Date.now(), mode: run.mode, name: run.name, active,
-    reps: run.mode === 'amrap' ? run.reps : undefined,
-    result: run.result ?? undefined,
-  });
-  sessions = sessions.slice(0, 50);
+  credit(run.idx, segElapsed());
+  const session = sessionRecord(natural);
+  sessions.unshift(session);
+  sessions = sessions.slice(0, MAX_SESSIONS);
   store.set('sessions', sessions);
 
   $('#done-name').textContent = run.name;
-  const stats = [[fmt(active), 'Durée active']];
-  if (run.mode === 'amrap') {
-    stats.push([run.reps, 'Rounds']);
-    if (run.reps) stats.push([fmt(Math.round(active / run.reps)), 'Moyenne / round']);
-  }
-  if (run.result != null) stats.push([fmt(run.result), 'Temps final']);
-  const works = run.segs.filter((s, i) => s.kind === 'work' && i <= run.idx).length;
-  if (run.mode !== 'amrap' && run.mode !== 'fortime' && run.mode !== 'countdown') stats.push([works, 'Intervalles d’effort']);
-  $('#stats').innerHTML = stats.map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  $('#done-laps').innerHTML = lapsHtml();
+  $('#stats').innerHTML = statsHtml(sessionStats(session));
+  $('#done-laps').innerHTML = lapsHtml(run.laps);
+  $('#done-journal').innerHTML = journalHtml(session);
   show('done');
+}
+
+const INTERVAL_MODES = ['tabata', 'hiit', 'emom', 'circuit'];
+
+// Tout ce qu'on sait de la séance terminée, pour le calendrier.
+function sessionRecord(natural) {
+  const end = Date.now();
+  const sum = (test) => Math.round(run.segs.reduce((a, s, i) => a + (test(s) ? run.spent[i] || 0 : 0), 0));
+  const planned = isFinite(run.total) ? run.total : null;
+  const progress = planned ? Math.min(100, Math.round((sum(() => true) / planned) * 100)) : null;
+  const works = run.segs.map((s, i) => i).filter((i) => run.segs[i].kind === 'work');
+  const seg = cur();
+  const rec = {
+    date: run.startDate, end, mode: run.mode, name: run.name, cfg: run.cfg,
+    active: Math.round(run.active / 1000), wall: Math.round((end - run.startDate) / 1000),
+    planned, progress, complete: natural || run.mode === 'fortime' || progress >= 99,
+    work: sum((s) => s.kind === 'work'), rest: sum((s) => s.kind === 'rest' || s.kind === 'setRest'),
+    prepare: sum((s) => s.kind === 'prepare'), cooldown: sum((s) => s.kind === 'cooldown'),
+    pauses: run.pauses, skipped: run.skipped,
+  };
+  if (INTERVAL_MODES.includes(run.mode)) {
+    rec.intervals = { done: works.filter((i) => run.spent[i] >= run.segs[i].dur - 0.5).length, total: works.length };
+  }
+  if (seg.round) Object.assign(rec, { round: seg.round, rounds: seg.rounds });
+  if (seg.set) Object.assign(rec, { set: seg.set, sets: seg.sets });
+  if (run.mode === 'amrap') rec.reps = run.reps;
+  if (run.result != null) rec.result = run.result;
+  if (run.mode === 'fortime' && natural) rec.capped = true;
+  if (run.laps.length) rec.laps = run.laps.map((t) => Math.round(t * 10) / 10);
+  return rec;
 }
 
 function quit() {
@@ -817,9 +1047,9 @@ function quit() {
   show('home');
 }
 
-function lapsHtml() {
+function lapsHtml(laps = []) {
   let prev = 0;
-  return run.laps.map((t, i) => {
+  return laps.map((t, i) => {
     const split = t - prev;
     prev = t;
     return `<li><span>Tour ${i + 1}</span><span>${fmt(Math.floor(split))}</span><span>${fmt(Math.floor(t))}</span></li>`;
@@ -865,9 +1095,19 @@ const actions = {
     if (!run || run.finished) return;
     if (run.idx + 1 >= run.segs.length) finish(); else goTo(run.idx + 1);
   },
-  stop() { if (!run || run.finished) return; pause(); $('#stop-sheet').hidden = false; },
+  stop() {
+    if (!run || run.finished) return;
+    run.stopPaused = !run.paused;
+    pause();
+    $('#stop-sheet').hidden = false;
+  },
   resume() { $('#stop-sheet').hidden = true; resume(); },
-  finish() { $('#stop-sheet').hidden = true; finish(); },
+  finish() {
+    $('#stop-sheet').hidden = true;
+    // La pause ouverte par ✕ pour terminer n'est pas une vraie pause.
+    if (run?.stopPaused) run.pauses--;
+    finish();
+  },
   quit,
   mute() {
     muted = !muted;
@@ -881,11 +1121,41 @@ const actions = {
   lap() {
     if (run.paused) return;
     run.laps.push(segElapsed());
-    $('#laps').innerHTML = lapsHtml();
+    $('#laps').innerHTML = lapsHtml(run.laps);
     beep(520, 0.08); buzz(30);
   },
 
-  'clear-history'() { sessions = []; store.set('sessions', sessions); renderHome(); },
+  calendar() { openCalendar(dayKey(Date.now())); },
+  'month-prev'() { calMonth.setMonth(calMonth.getMonth() - 1); renderCalendar(); },
+  'month-next'() { calMonth.setMonth(calMonth.getMonth() + 1); renderCalendar(); },
+  'clear-history'(el) {
+    if (!confirmed(el, `Appuyez encore pour effacer les ${plural(sessions.length, 'séance')}`)) return;
+    sessions = [];
+    saveSessions();
+    renderCalendar();
+  },
+  'session-back'() {
+    if (viewingFrom === 'home') return actions.home();
+    openCalendar(viewing ? dayKey(viewing.date) : calDay);
+  },
+  'session-redo'() {
+    if (!viewing || !MODES[viewing.mode]) return;
+    openConfig(viewing.mode, viewing.cfg, viewing.name !== MODES[viewing.mode].name ? viewing.name : '');
+  },
+  'session-del'(el) {
+    if (!viewing || !confirmed(el, 'Appuyez encore pour supprimer')) return;
+    sessions = sessions.filter((s) => s !== viewing);
+    saveSessions();
+    actions['session-back']();
+  },
+  feel(el) {
+    const s = findSession(el.closest('.journal').dataset.id);
+    if (!s) return;
+    const v = +el.dataset.v;
+    s.feel = s.feel === v ? undefined : v;
+    saveSessions();
+    el.parentElement.querySelectorAll('.feel').forEach((b) => b.classList.toggle('on', +b.dataset.v === s.feel));
+  },
 };
 
 document.addEventListener('click', (e) => {
@@ -896,6 +1166,10 @@ document.addEventListener('click', (e) => {
   const favOpen = t.closest('[data-fav-open]');
   const favStart = t.closest('[data-fav-start]');
   const favDel = t.closest('[data-fav-del]');
+  const sess = t.closest('[data-session]');
+  if (sess) return openSession(sess.dataset.session, $('#home').hidden ? 'calendar' : 'home');
+  const day = t.closest('[data-day]');
+  if (day) { calDay = day.dataset.day; return renderCalendar(); }
   if (favOpen || favStart) {
     const f = favorites.find((x) => String(x.id) === (favOpen || favStart).dataset[favOpen ? 'favOpen' : 'favStart']);
     if (!f) return;
@@ -946,6 +1220,10 @@ document.addEventListener('input', (e) => {
     store.set('settings', settings);
   }
   if (t.classList.contains('step-name')) current.cfg.steps[+t.dataset.i].name = t.value;
+  if (t.classList.contains('session-note')) {
+    const s = findSession(t.closest('.journal').dataset.id);
+    if (s) { s.note = t.value.trim() ? t.value : undefined; saveSessions(); }
+  }
 });
 
 document.addEventListener('change', (e) => {
@@ -978,7 +1256,7 @@ function alertNote(text) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if ($('#run').hidden || !run || run.finished || e.target.matches('input')) return;
+  if ($('#run').hidden || !run || run.finished || e.target.matches('input, textarea')) return;
   if (e.code === 'Space') { e.preventDefault(); actions.toggle(); }
   else if (e.code === 'ArrowRight') actions.next();
   else if (e.code === 'ArrowLeft') actions.prev();
