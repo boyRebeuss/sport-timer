@@ -40,7 +40,7 @@
     </div>
     <p id="settings-note" class="note warn" hidden></p>
     <p class="note">Les bips continuent quand vous quittez l’appli ou verrouillez l’écran. La voix et les vibrations ne marchent que quand l’appli est ouverte.</p>
-    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.7#avis" target="_blank" rel="noopener">💬 Donner mon avis · Infos sur l’appli</a></p>
+    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.8#avis" target="_blank" rel="noopener">💬 Donner mon avis · Infos sur l’appli</a></p>
   </section>
 
   <!-- Configuration -->
@@ -170,7 +170,10 @@
     </div>
     <div class="cal-head"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
     <div id="cal-grid" class="cal-grid"></div>
+    <h3 class="stats-head"><span id="stats-title"></span>
+      <span class="seg"><button data-action="stats-month" id="seg-month">Mois</button><button data-action="stats-year" id="seg-year">Année</button></span></h3>
     <div id="month-stats" class="stats month-stats"></div>
+    <div id="year-bars" class="year-bars" hidden></div>
     <h3 id="day-title"></h3>
     <div id="day-list" class="list"></div>
     <button class="link danger" data-action="clear-history" id="clear-history">Effacer tout l’historique</button>

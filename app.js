@@ -135,7 +135,7 @@ const store = {
 /* ================= Journal des erreurs ================= */
 
 // Plantages envoyés au site d'information (page /admin de l'organisateur) : message, écran et type d'appareil seulement.
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const SITE = 'https://sport-timer-2iv.pages.dev';
 
 function deviceId() {
@@ -493,6 +493,7 @@ const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const FEELS = ['Facile', 'Modérée', 'Difficile', 'Très dure', 'À fond'];
 let calMonth = null;   // 1er jour du mois affiché
 let calDay = null;     // jour choisi (« 2026-10-27 »)
+let statsYear = store.get('statsYear', false); // bilan de l'année plutôt que du mois
 let viewing = null;    // séance ouverte en détail
 let viewingFrom = 'calendar';
 let confirmUntil = 0;  // double appui pour les suppressions
@@ -587,17 +588,35 @@ function renderCalendar() {
   }
   $('#cal-grid').innerHTML = html;
 
-  const inMonth = sessions.filter((s) => { const d = new Date(s.date); return d.getFullYear() === y && d.getMonth() === m; });
-  const active = inMonth.reduce((a, s) => a + (s.active || 0), 0);
-  const work = inMonth.reduce((a, s) => a + (s.work || 0), 0);
-  const activeDays = new Set(inMonth.map((s) => dayKey(s.date))).size;
-  const stats = [[inMonth.length, inMonth.length > 1 ? 'Séances' : 'Séance'], [fmtDur(active), 'Temps actif'],
+  // Bilan du mois affiché, ou de toute son année.
+  const inPeriod = sessions.filter((s) => { const d = new Date(s.date); return d.getFullYear() === y && (statsYear || d.getMonth() === m); });
+  const active = inPeriod.reduce((a, s) => a + (s.active || 0), 0);
+  const work = inPeriod.reduce((a, s) => a + (s.work || 0), 0);
+  const activeDays = new Set(inPeriod.map((s) => dayKey(s.date))).size;
+  const stats = [[inPeriod.length, inPeriod.length > 1 ? 'Séances' : 'Séance'], [fmtDur(active), 'Temps actif'],
     [activeDays, activeDays > 1 ? 'Jours actifs' : 'Jour actif']];
   // La série en cours ne concerne que le mois actuel.
   const thisMonth = y === new Date().getFullYear() && m === new Date().getMonth();
   if (work) stats.push([fmtDur(work), 'Temps d’effort']);
-  else if (thisMonth) stats.push([streak(days), 'Jours d’affilée (série en cours)']);
+  else if (thisMonth && !statsYear) stats.push([streak(days), 'Jours d’affilée (série en cours)']);
+  $('#stats-title').textContent = statsYear ? `Bilan ${y}` : `Bilan · ${$('#month-title').textContent}`;
+  $('#seg-month').classList.toggle('on', !statsYear);
+  $('#seg-year').classList.toggle('on', statsYear);
   $('#month-stats').innerHTML = statsHtml(stats);
+
+  // Barres du temps actif de chaque mois de l'année (appui = aller à ce mois).
+  const bars = $('#year-bars');
+  bars.hidden = !statsYear;
+  if (statsYear) {
+    const perMonth = Array(12).fill(0);
+    inPeriod.forEach((s) => { perMonth[new Date(s.date).getMonth()] += s.active || 0; });
+    const max = Math.max(...perMonth, 1);
+    bars.innerHTML = perMonth.map((v, i) => `
+      <button class="ybar${i === m ? ' sel' : ''}" data-month="${i}" aria-label="${new Date(y, i, 1).toLocaleDateString('fr-FR', { month: 'long' })} : ${fmtDur(v)}">
+        <span class="ybar-track"><span class="ybar-fill" style="height:${v ? Math.max(4, Math.round(v / max * 100)) : 0}%"></span></span>
+        <small>${'JFMAMJJASOND'[i]}</small>
+      </button>`).join('');
+  }
 
   const dayTitle = keyDate(calDay).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   $('#day-title').textContent = calDay === today ? `Aujourd’hui · ${dayTitle}` : dayTitle;
@@ -1136,6 +1155,8 @@ const actions = {
   calendar() { openCalendar(dayKey(Date.now())); },
   'month-prev'() { calMonth.setMonth(calMonth.getMonth() - 1); renderCalendar(); },
   'month-next'() { calMonth.setMonth(calMonth.getMonth() + 1); renderCalendar(); },
+  'stats-month'() { statsYear = false; store.set('statsYear', false); renderCalendar(); },
+  'stats-year'() { statsYear = true; store.set('statsYear', true); renderCalendar(); },
   'clear-history'(el) {
     if (!confirmed(el, `Appuyez encore pour effacer les ${plural(sessions.length, 'séance')}`)) return;
     sessions = [];
@@ -1176,6 +1197,8 @@ document.addEventListener('click', (e) => {
   const favDel = t.closest('[data-fav-del]');
   const sess = t.closest('[data-session]');
   if (sess) return openSession(sess.dataset.session, $('#home').hidden ? 'calendar' : 'home');
+  const month = t.closest('[data-month]');
+  if (month) { calMonth = new Date(calMonth.getFullYear(), +month.dataset.month, 1); return renderCalendar(); }
   const day = t.closest('[data-day]');
   if (day) { calDay = day.dataset.day; return renderCalendar(); }
   if (favOpen || favStart) {
