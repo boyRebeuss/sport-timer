@@ -20,37 +20,37 @@ const INTERVAL_FIELDS = ['prepare', 'work', 'rest', 'rounds', 'sets', 'setRest',
 
 const MODES = {
   tabata: {
-    name: 'Tabata', icon: '🔥', color: '#ef4444', desc: '20 s / 10 s · 4 × 4',
+    name: 'Tabata', icon: '🔥', color: '#ff3b1f', desc: '20 s / 10 s · 4 × 4',
     long: '4 séries de 4 rounds : 20 s d’effort maximal, 10 s de repos, 1 min de récupération entre les séries.',
     fields: INTERVAL_FIELDS,
     defaults: { prepare: 10, work: 20, rest: 10, rounds: 4, sets: 4, setRest: 60, cooldown: 0 },
   },
   hiit: {
-    name: 'HIIT', icon: '⚡', color: '#f97316', desc: 'Intervalles effort / repos',
+    name: 'HIIT', icon: '⚡', color: '#ff8a1f', desc: 'Intervalles effort / repos',
     long: 'Alternez effort et repos, en rounds et en séries.',
     fields: INTERVAL_FIELDS,
     defaults: { prepare: 10, work: 20, rest: 10, rounds: 4, sets: 4, setRest: 90, cooldown: 0 },
   },
   emom: {
-    name: 'EMOM', icon: '⏱️', color: '#eab308', desc: 'Every Minute On the Minute',
+    name: 'EMOM', icon: '⏱️', color: '#ffd21f', desc: 'Every Minute On the Minute',
     long: 'Démarrez l’exercice au début de chaque intervalle ; le temps restant sert de repos.',
     fields: ['prepare', 'interval', 'rounds'],
     defaults: { prepare: 10, interval: 60, rounds: 10 },
   },
   amrap: {
-    name: 'AMRAP', icon: '🔁', color: '#22c55e', desc: 'Max de tours dans le temps',
+    name: 'AMRAP', icon: '🔁', color: '#a6e22e', desc: 'Max de tours dans le temps',
     long: 'As Many Rounds As Possible : enchaînez un maximum de tours. Comptez-les d’un tap.',
     fields: ['prepare', 'duration'],
     defaults: { prepare: 10, duration: 720 },
   },
   fortime: {
-    name: 'For Time', icon: '🏁', color: '#3b82f6', desc: 'Chrono avec time cap',
+    name: 'For Time', icon: '🏁', color: '#36a9ff', desc: 'Chrono avec time cap',
     long: 'Terminez le travail le plus vite possible et enregistrez vos temps de passage.',
     fields: ['prepare', 'cap'],
     defaults: { prepare: 10, cap: 0 },
   },
   circuit: {
-    name: 'Circuit', icon: '🏋️', color: '#a855f7', desc: 'Vos exercices, enchaînés',
+    name: 'Circuit', icon: '🏋️', color: '#ff5fa8', desc: 'Vos exercices, enchaînés',
     long: 'Composez votre enchaînement : chaque exercice est annoncé à voix haute.',
     fields: ['prepare', 'rounds', 'roundRest', 'cooldown'],
     labels: { rounds: 'Tours' },
@@ -69,7 +69,7 @@ const MODES = {
     },
   },
   countdown: {
-    name: 'Minuteur', icon: '⏳', color: '#14b8a6', desc: 'Compte à rebours simple',
+    name: 'Minuteur', icon: '⏳', color: '#f1ede4', desc: 'Compte à rebours simple',
     long: 'Un simple compte à rebours, avec bips sur les dernières secondes.',
     fields: ['duration'],
     defaults: { duration: 300 },
@@ -77,14 +77,26 @@ const MODES = {
 };
 
 const PHASES = {
-  prepare:  { label: 'Préparation', color: '#f59e0b' },
-  work:     { label: 'Effort', color: '#ef4444' },
-  rest:     { label: 'Repos', color: '#16a34a' },
-  setRest:  { label: 'Récupération', color: '#2563eb' },
-  cooldown: { label: 'Retour au calme', color: '#7c3aed' },
+  prepare:  { label: 'Préparation', color: '#ffb21f' },
+  work:     { label: 'Effort', color: '#ff3b1f' },
+  rest:     { label: 'Repos', color: '#3ee07a' },
+  setRest:  { label: 'Récupération', color: '#36a9ff' },
+  cooldown: { label: 'Retour au calme', color: '#d9d2c3' },
 };
 
 const RING_C = 2 * Math.PI * 90;
+
+// Pictogrammes des modes (charte « L'horloge de la salle », docs/charte.md) : trait carré, dessinés sur 24 × 24.
+const ICON_PATHS = {
+  tabata: '<path d="M3 20V9h3v11M9 20V13h3v7M14 20V9h3v11M20 20v-7"/>',
+  hiit: '<path d="M13 2 5 13h6l-1 9 8-12h-6z"/>',
+  emom: '<circle cx="12" cy="13" r="8"/><path d="M12 13V8M9 2h6M12 2v3"/>',
+  amrap: '<path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/>',
+  fortime: '<path d="M5 22V3h14v10H5"/><path d="M5 3h4.7v5H5zM14.3 3H19v5h-4.7zM9.7 8h4.6v5H9.7z" fill="currentColor" stroke="none"/>',
+  circuit: '<path d="M6 6h12v12H6z"/><path d="M3 3h6v6H3zM15 3h6v6h-6zM15 15h6v6h-6zM3 15h6v6H3z" fill="currentColor" stroke="none"/>',
+  countdown: '<path d="M6 2h12M6 22h12M7 2c0 6 10 6 10 10S7 16 7 22M17 2c0 6-10 6-10 10s10 4 10 10"/>',
+};
+const ico = (mode) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[mode] ?? ICON_PATHS.countdown}</svg>`;
 
 // Derniers réglages de chaque mode. Clé changée (« last2_ ») quand les valeurs par défaut changent, pour qu'elles s'appliquent.
 const LAST_KEY = 'last2_';
@@ -459,18 +471,24 @@ function show(id) {
   if (id !== 'run') document.title = 'Sport Timer';
 }
 
+// Durée de la séance avec les derniers réglages, affichée en chiffres d'horloge sur la carte du mode.
+function readout(key) {
+  const t = totalOf(buildSegments(key, { ...MODES[key].defaults, ...store.get(LAST_KEY + key, {}) }));
+  return isFinite(t) ? fmt(t) : '00:00';
+}
+
 function renderHome() {
   $('#modes').innerHTML = Object.entries(MODES).map(([key, m]) => `
     <button class="mode-card" data-mode="${key}" style="--c:${m.color}">
-      <span class="mode-icon">${m.icon}</span>
-      <span class="mode-name">${m.name}</span>
-      <span class="mode-desc">${m.desc}</span>
+      <span class="mode-led" data-ghost="${readout(key).replace(/\d/g, '8')}">${readout(key)}</span>
+      <span class="mode-text"><span class="mode-name">${ico(key)}${m.name}</span>
+      <span class="mode-desc">${m.desc}</span></span>
     </button>`).join('');
 
   $('#favs').innerHTML = favorites.length
     ? favorites.map((f) => `
       <div class="item">
-        <span class="item-icon">${MODES[f.mode].icon}</span>
+        <span class="item-icon" style="--c:${MODES[f.mode].color}">${ico(f.mode)}</span>
         <button class="item-main" data-fav-open="${f.id}">
           <div class="item-title">${esc(f.name)}</div>
           <div class="item-sub">${MODES[f.mode].name} · ${fmtTotal(totalOf(buildSegments(f.mode, f.cfg)))}</div>
@@ -552,7 +570,7 @@ function sessionItem(s) {
   const stopped = s.complete === false ? ` · <span class="warn">arrêtée à ${s.progress} %</span>` : '';
   return `
     <button class="item" data-session="${s.date}">
-      <span class="item-icon">${MODES[s.mode]?.icon ?? '⏱️'}</span>
+      <span class="item-icon" style="--c:${MODES[s.mode]?.color ?? 'var(--muted)'}">${ico(s.mode)}</span>
       <span class="item-main">
         <span class="item-title">${esc(s.name)}</span>
         <span class="item-sub">${when} · ${fmt(s.active)}${extra}${stopped}</span>
@@ -680,7 +698,7 @@ function openSession(id, from) {
 
   let html = `
     <div class="session-head" style="--c:${m.color ?? 'var(--muted)'}">
-      <span class="session-icon">${m.icon}</span>
+      <span class="session-icon">${ico(s.mode)}</span>
       <div>
         <h2>${esc(s.name)}</h2>
         <p class="muted">${m.name !== s.name ? m.name + ' · ' : ''}${day[0].toUpperCase() + day.slice(1)}<br>${hours}</p>
@@ -721,7 +739,7 @@ function openConfig(mode, cfg, name = '') {
   const m = MODES[mode];
   current = { mode, name, cfg: clone({ ...m.defaults, ...(cfg || store.get(LAST_KEY + mode, {})) }) };
   document.documentElement.style.setProperty('--accent', m.color);
-  $('#config-title').textContent = `${m.icon} ${m.name}`;
+  $('#config-title').textContent = m.name;
   $('#config-desc').textContent = m.long;
   $('#fav-name').value = name;
 
@@ -826,7 +844,7 @@ function startRun() {
   $('#stop-sheet').hidden = true;
   $('#laps').innerHTML = '';
   $('#reps').textContent = '0';
-  $('#mute-btn').textContent = muted ? '🔇' : '🔊';
+  $('#mute-btn').classList.toggle('muted', muted);
   show('run');
 
   enterSegment(0, now);
@@ -939,6 +957,7 @@ function draw() {
   const text = fmt(shown);
   const timeEl = $('#time');
   timeEl.textContent = text;
+  timeEl.dataset.ghost = text.replace(/\d/g, '8');
   timeEl.classList.toggle('long', text.length > 5);
 
   let frac;
@@ -1138,7 +1157,7 @@ const actions = {
   quit,
   mute() {
     muted = !muted;
-    $('#mute-btn').textContent = muted ? '🔇' : '🔊';
+    $('#mute-btn').classList.toggle('muted', muted);
     trackEl.muted = muted;
     if (muted && 'speechSynthesis' in window) speechSynthesis.cancel();
   },

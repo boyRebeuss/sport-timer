@@ -1,5 +1,6 @@
-const CACHE = 'sport-timer-v11';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
+const CACHE = 'sport-timer-v12';
+const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg',
+  './fonts/dseg7-classic-bold.woff2', './fonts/chakra-petch-500.woff2', './fonts/chakra-petch-700.woff2'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

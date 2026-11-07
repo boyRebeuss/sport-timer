@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d12">
+  <meta name="theme-color" content="#100f0d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sport Timer">
@@ -11,6 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preload" href="fonts/dseg7-classic-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,8 +19,8 @@
   <!-- Accueil -->
   <section id="home" class="screen">
     <header class="brand">
-      <h1>Sport Timer</h1>
-      <p class="muted">Choisissez votre entraînement</p>
+      <h1>Sport <span>Timer</span></h1>
+      <p class="muted">Quel entraînement aujourd’hui ? La durée affichée est celle de vos derniers réglages.</p>
     </header>
 
     <div id="modes" class="modes"></div>
@@ -40,7 +41,7 @@
     </div>
     <p id="settings-note" class="note warn" hidden></p>
     <p class="note">Les bips continuent quand vous quittez l’appli ou verrouillez l’écran. La voix et les vibrations ne marchent que quand l’appli est ouverte.</p>
-    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.8#avis" target="_blank" rel="noopener">💬 Donner mon avis · Infos sur l’appli</a></p>
+    <p class="note"><a class="link" href="https://sport-timer-2iv.pages.dev/?depuis=web&amp;version=1.8#avis" target="_blank" rel="noopener">Donner mon avis · Infos sur l’appli ↗</a></p>
   </section>
 
   <!-- Configuration -->
@@ -79,7 +80,10 @@
     <header class="topbar">
       <button class="icon-btn" data-action="stop" aria-label="Arrêter">✕</button>
       <div id="run-title" class="run-title"></div>
-      <button class="icon-btn" id="mute-btn" data-action="mute" aria-label="Couper le son">🔊</button>
+      <button class="icon-btn" id="mute-btn" data-action="mute" aria-label="Couper le son">
+        <svg viewBox="0 0 24 24" class="ico-son" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+        <svg viewBox="0 0 24 24" class="ico-muet" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z" fill="currentColor"/><path d="M16 9l6 6M22 9l-6 6"/></svg>
+      </button>
     </header>
 
     <div class="phase">
@@ -89,8 +93,16 @@
 
     <div class="ring-wrap" data-action="toggle">
       <svg viewBox="0 0 200 200" class="ring">
-        <circle class="ring-bg" cx="100" cy="100" r="90"/>
-        <circle class="ring-fg" id="ring" cx="100" cy="100" r="90"/>
+        <defs>
+          <!-- Couronne de 60 LED : l'anneau est découpé en 60 segments (circonférence 565,49 / 60 = 9,42) -->
+          <mask id="leds" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="#fff" stroke-width="14" stroke-dasharray="5.4 4.02"/>
+          </mask>
+        </defs>
+        <g mask="url(#leds)">
+          <circle class="ring-bg" cx="100" cy="100" r="90"/>
+          <circle class="ring-fg" id="ring" cx="100" cy="100" r="90"/>
+        </g>
       </svg>
       <div class="ring-center">
         <div id="time" class="time">00:00</div>
@@ -145,7 +157,7 @@
   <!-- Fin de séance -->
   <section id="done" class="screen" hidden>
     <div class="done-head">
-      <div class="done-emoji">🎉</div>
+      <div class="done-emoji" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 22V3h14v10H5"/><path d="M5 3h4.7v5H5zM14.3 3H19v5h-4.7zM9.7 8h4.6v5H9.7z" fill="currentColor" stroke="none"/></svg></div>
       <h2>Bravo !</h2>
       <p id="done-name" class="muted"></p>
     </div>
